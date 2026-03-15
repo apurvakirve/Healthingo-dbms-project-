@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useApp } from '../context/AppContext';
 import { motion } from 'motion/react';
 import { Progress } from '../components/ui/progress';
@@ -37,7 +37,29 @@ const badgesData = [
 ];
 
 export default function DashboardPage() {
-  const { user, points, streak, moduleProgress } = useApp();
+  const { user, points, streak, moduleProgress, badges, token } = useApp();
+  const navigate = useNavigate();
+  const [bmiCategory, setBmiCategory] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Fetch user profile to get latest BMI
+    if (!token) return;
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    fetch(`${API_BASE}/user/stats`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.stats?.bmi_category) setBmiCategory(data.stats.bmi_category);
+      })
+      .catch(() => {});
+  }, [token]);
+
+  const bmiGoalMap: Record<string, { emoji: string; text: string }> = {
+    Underweight: { emoji: '🥗', text: 'Increase calorie intake with nutritious foods' },
+    Normal:      { emoji: '✅', text: 'Maintain a balanced and varied diet' },
+    Overweight:  { emoji: '🏃', text: 'Reduce calorie intake and increase activity' },
+    Obese:       { emoji: '💪', text: 'Focus on portion control and daily exercise' },
+  };
+  const bmiGoal = bmiCategory ? bmiGoalMap[bmiCategory] : null;
 
   const totalProgress = moduleProgress.length > 0
     ? Math.round(moduleProgress.reduce((sum, mod) => sum + mod.progress, 0) / moduleProgress.length)
@@ -261,21 +283,24 @@ export default function DashboardPage() {
           >
             <h3 className="text-xl font-bold text-gray-900 mb-5">Achievements</h3>
             <div className="grid grid-cols-3 gap-3">
-              {badgesData.map((badge, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.4 + i * 0.07, type: 'spring', stiffness: 200 }}
-                  whileHover={badge.earned ? { scale: 1.1, rotate: 5 } : {}}
-                  className={`text-center cursor-default ${!badge.earned ? 'opacity-35' : ''}`}
-                >
-                  <div className={`w-14 h-14 ${badge.earned ? badge.color : 'bg-gray-100'} rounded-2xl flex items-center justify-center mx-auto mb-1.5 shadow-sm`}>
-                    <span className="text-2xl">{badge.emoji}</span>
-                  </div>
-                  <p className="text-xs text-gray-600 leading-tight">{badge.label}</p>
-                </motion.div>
-              ))}
+              {badgesData.map((badge, i) => {
+                const isEarned = badges?.some((b: any) => b.name === badge.label);
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.4 + i * 0.07, type: 'spring', stiffness: 200 }}
+                    whileHover={isEarned ? { scale: 1.1, rotate: 5 } : {}}
+                    className={`text-center cursor-default ${!isEarned ? 'opacity-35' : ''}`}
+                  >
+                    <div className={`w-14 h-14 ${isEarned ? badge.color : 'bg-gray-100'} rounded-2xl flex items-center justify-center mx-auto mb-1.5 shadow-sm`}>
+                      <span className="text-2xl">{badge.emoji}</span>
+                    </div>
+                    <p className="text-xs text-gray-600 leading-tight">{badge.label}</p>
+                  </motion.div>
+                );
+              })}
             </div>
 
             {/* Daily Goal */}
@@ -286,9 +311,9 @@ export default function DashboardPage() {
               </div>
               <div className="space-y-2.5">
                 {[
-                  { label: 'Complete a lesson', done: true, emoji: '📖' },
+                  { label: 'Complete a lesson', done: false, emoji: '📖' },
                   { label: 'Log your habits', done: false, emoji: '✅' },
-                  { label: 'Check your BMI', done: false, emoji: '🧮' },
+                  { label: 'Check your BMI', done: !!bmiCategory, emoji: '🧮' },
                 ].map((goal, i) => (
                   <motion.div
                     key={i}
@@ -310,6 +335,19 @@ export default function DashboardPage() {
                     )}
                   </motion.div>
                 ))}
+                {bmiGoal && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 border border-blue-100 text-sm mt-2"
+                  >
+                    <span className="text-lg">{bmiGoal.emoji}</span>
+                    <div>
+                      <div className="text-xs text-blue-500 font-semibold uppercase tracking-wide mb-0.5">BMI Goal · {bmiCategory}</div>
+                      <span className="text-blue-800">{bmiGoal.text}</span>
+                    </div>
+                  </motion.div>
+                )}
               </div>
             </div>
           </motion.div>

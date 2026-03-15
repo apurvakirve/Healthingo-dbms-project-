@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
 import { useApp } from '../context/AppContext';
-import { modules, quizzes } from '../data/modules';
 import { motion, AnimatePresence } from 'motion/react';
 import { NavBar } from '../components/NavBar';
-import { ArrowLeft, CheckCircle, XCircle, Trophy, Zap, RotateCcw, ArrowRight } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Trophy, Zap, RotateCcw, ArrowRight, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 function HeartBar({ lives }: { lives: number }) {
@@ -26,28 +25,74 @@ function HeartBar({ lives }: { lives: number }) {
 export default function QuizPage() {
   const { moduleId, lessonId } = useParams<{ moduleId: string; lessonId: string }>();
   const navigate = useNavigate();
-  const { completeLesson, addPoints } = useApp();
+  const { token, refreshStats } = useApp();
 
-  const module = modules.find((m) => m.id === moduleId);
-  const lesson = module?.lessons.find((l) => l.id === lessonId);
-  const quizKey = `${moduleId}-${lessonId}`;
-  const questions = quizzes[quizKey] || [];
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [quizInfo, setQuizInfo] = useState<any>(null);
+  const [lessonInfo, setLessonInfo] = useState<any>(null);
 
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null); // option text
   const [showFeedback, setShowFeedback] = useState(false);
-  const [score, setScore] = useState(0);
+  const [scoreCount, setScoreCount] = useState(0);
   const [lives, setLives] = useState(3);
   const [isComplete, setIsComplete] = useState(false);
   const [shake, setShake] = useState(false);
+  const [collectedAnswers, setCollectedAnswers] = useState<{ questionId: number; selectedAnswer: string }[]>([]);
 
-  if (!module || !lesson || questions.length === 0) {
+  const [apiResult, setApiResult] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+  useEffect(() => {
+    const loadQuiz = async () => {
+      if (!lessonId) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`${API_BASE}/lessons/${lessonId}/quiz`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) throw new Error('Failed to load quiz');
+        const data = await res.json();
+        setQuestions(data.quiz.questions);
+        setQuizInfo(data.quiz);
+
+        // Fetch lesson info for title
+        const lessonRes = await fetch(`${API_BASE}/modules/${moduleId}/lessons/${lessonId}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (lessonRes.ok) {
+          const lessonData = await lessonRes.json();
+          setLessonInfo(lessonData.lesson);
+        }
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadQuiz();
+  }, [lessonId, token, moduleId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
+      </div>
+    );
+  }
+
+  if (error || questions.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center">
         <div className="text-center">
           <div className="text-6xl mb-4">📝</div>
           <h2 className="text-2xl font-bold mb-2">Quiz not available</h2>
-          <p className="text-gray-500 mb-6">This lesson doesn't have a quiz yet.</p>
+          <p className="text-gray-500 mb-6">{error || "This lesson doesn't have a quiz yet."}</p>
           <Link to={`/modules/${moduleId}`} className="text-green-600 hover:text-green-700 font-medium">
             ← Back to Lessons
           </Link>
@@ -57,36 +102,64 @@ export default function QuizPage() {
   }
 
   const question = questions[currentQuestion];
-  const isCorrect = selectedAnswer === question.correctAnswer;
+  // Correct answer is the option text from DB
+  const correctAnswerText = question?.correctAnswer ?? '';
+  const isCorrect = selectedAnswer?.trim().toLowerCase() === correctAnswerText.trim().toLowerCase();
 
-  const handleAnswerSelect = (answerIndex: number) => {
+  const handleAnswerSelect = (optionText: string) => {
     if (showFeedback) return;
-    setSelectedAnswer(answerIndex);
+    setSelectedAnswer(optionText);
     setShowFeedback(true);
 
-    if (answerIndex === question.correctAnswer) {
-      setScore((s) => s + 1);
+    const correct = optionText.trim().toLowerCase() === correctAnswerText.trim().toLowerCase();
+    if (correct) {
+      setScoreCount((s) => s + 1);
     } else {
       setLives((l) => l - 1);
       setShake(true);
       setTimeout(() => setShake(false), 600);
     }
+    // Collect answer for batch submission
+    setCollectedAnswers((prev) => [
+      ...prev.filter((a) => a.questionId !== question.id),
+      { questionId: question.id, selectedAnswer: optionText },
+    ]);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion((c) => c + 1);
       setSelectedAnswer(null);
       setShowFeedback(false);
     } else {
-      const pointsEarned = score * 10;
-      addPoints(pointsEarned);
-      if (moduleId && lessonId) {
-        completeLesson(moduleId, lessonId);
+      // Last question - Submit to backend
+      setIsSubmitting(true);
+      try {
+        const res = await fetch(`${API_BASE}/quiz/submit`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            lessonId,
+            answers: collectedAnswers
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setApiResult(data);
+          refreshStats(); // Update global points/streak
+        }
+      } catch (err) {
+        console.error('Failed to submit quiz:', err);
+      } finally {
+        setIsSubmitting(false);
+        setIsComplete(true);
       }
-      setIsComplete(true);
-      const percentage = Math.round((score / questions.length) * 100);
-      if (percentage >= 70) {
+
+      if (scoreCount / questions.length >= 0.7) {
         setTimeout(() => {
           confetti({
             particleCount: 100,
@@ -103,18 +176,20 @@ export default function QuizPage() {
     setCurrentQuestion(0);
     setSelectedAnswer(null);
     setShowFeedback(false);
-    setScore(0);
+    setScoreCount(0);
     setLives(3);
     setIsComplete(false);
+    setApiResult(null);
+    setCollectedAnswers([]);
   };
 
   const progressPct = ((currentQuestion + (showFeedback ? 1 : 0)) / questions.length) * 100;
 
   // Quiz complete screen
   if (isComplete) {
-    const finalScore = score;
-    const percentage = Math.round((finalScore / questions.length) * 100);
-    const isPassed = percentage >= 70;
+    const finalScore = apiResult?.score ?? Math.round((scoreCount / questions.length) * 100);
+    const percentage = finalScore;
+    const isPassed = apiResult?.passed ?? (percentage >= 70);
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
@@ -137,7 +212,7 @@ export default function QuizPage() {
             <h2 className="text-3xl font-bold text-gray-900 mb-2">
               {isPassed ? 'Brilliant!' : 'Good Effort!'}
             </h2>
-            <p className="text-gray-500 mb-6">{lesson.title}</p>
+            <p className="text-gray-500 mb-6">{lessonInfo?.title || 'Lesson'}</p>
 
             {/* Score Ring */}
             <div className="relative w-32 h-32 mx-auto mb-6">
@@ -170,7 +245,7 @@ export default function QuizPage() {
             >
               <div className="flex items-center justify-center gap-2">
                 <Trophy className="w-6 h-6 text-yellow-500" />
-                <span className="text-xl font-bold text-yellow-700">+{finalScore * 10} Points Earned!</span>
+                <span className="text-xl font-bold text-yellow-700">+{isPassed ? 50 : 0} Points Earned!</span>
               </div>
             </motion.div>
 
@@ -265,25 +340,27 @@ export default function QuizPage() {
             className="bg-white rounded-3xl shadow-xl p-8 mb-6"
           >
             <div className="text-center mb-6">
-              <span className="text-4xl">{module.icon}</span>
+              <span className="text-4xl">{lessonInfo?.icon || '📚'}</span>
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">
               {question.question}
             </h2>
 
             <div className="space-y-3">
-              {question.options.map((option, index) => {
+              {question.options.map((option: string, index: number) => {
+                const isThisCorrect = option.trim().toLowerCase() === correctAnswerText.trim().toLowerCase();
+                const isThisSelected = option === selectedAnswer;
                 let stateClass = '';
                 if (showFeedback) {
-                  if (index === question.correctAnswer) {
+                  if (isThisCorrect) {
                     stateClass = 'border-green-500 bg-green-50 text-green-800';
-                  } else if (index === selectedAnswer) {
+                  } else if (isThisSelected) {
                     stateClass = 'border-red-400 bg-red-50 text-red-800';
                   } else {
                     stateClass = 'border-gray-200 opacity-50 text-gray-500';
                   }
                 } else {
-                  stateClass = selectedAnswer === index
+                  stateClass = isThisSelected
                     ? 'border-green-500 bg-green-50'
                     : 'border-gray-200 hover:border-green-400 hover:bg-green-50 hover:text-green-800';
                 }
@@ -295,20 +372,20 @@ export default function QuizPage() {
                     key={index}
                     whileHover={!showFeedback ? { scale: 1.01, x: 4 } : {}}
                     whileTap={!showFeedback ? { scale: 0.99 } : {}}
-                    onClick={() => handleAnswerSelect(index)}
+                    onClick={() => handleAnswerSelect(option)}
                     disabled={showFeedback}
                     className={`w-full text-left px-5 py-4 rounded-2xl border-2 transition-all font-medium flex items-center gap-4 ${stateClass}`}
                   >
                     <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                      showFeedback && index === question.correctAnswer
+                      showFeedback && isThisCorrect
                         ? 'bg-green-500 text-white'
-                        : showFeedback && index === selectedAnswer && index !== question.correctAnswer
+                        : showFeedback && isThisSelected && !isThisCorrect
                         ? 'bg-red-400 text-white'
                         : 'bg-gray-100 text-gray-500'
                     }`}>
-                      {showFeedback && index === question.correctAnswer ? (
+                      {showFeedback && isThisCorrect ? (
                         <CheckCircle className="w-4 h-4" />
-                      ) : showFeedback && index === selectedAnswer && index !== question.correctAnswer ? (
+                      ) : showFeedback && isThisSelected && !isThisCorrect ? (
                         <XCircle className="w-4 h-4" />
                       ) : (
                         letters[index]

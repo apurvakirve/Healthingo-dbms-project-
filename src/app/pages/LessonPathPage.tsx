@@ -1,17 +1,112 @@
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router';
 import { useApp } from '../context/AppContext';
-import { modules } from '../data/modules';
+import { modules as staticModules } from '../data/modules';
 import { motion, AnimatePresence } from 'motion/react';
 import { NavBar } from '../components/NavBar';
-import { CheckCircle, Lock, Play, ArrowLeft, Star, Flame } from 'lucide-react';
+import { CheckCircle, Lock, Play, ArrowLeft, Star, Loader2 } from 'lucide-react';
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface ApiModule {
+  module_id: number;
+  title: string;
+  description: string;
+  icon: string | null;
+  module_order: number;
+}
+
+interface ApiLesson {
+  lesson_id: number;
+  title: string;
+  lesson_order: number;
+  status: 'locked' | 'unlocked' | 'completed';
+}
+
+interface CommonModule {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+}
+
+interface CommonLesson {
+  id: string;
+  title: string;
+  order: number;
+  status: 'locked' | 'unlocked' | 'completed';
+}
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+// ── Component ──────────────────────────────────────────────────────────────────
 
 export default function LessonPathPage() {
   const { moduleId } = useParams<{ moduleId: string }>();
-  const { moduleProgress } = useApp();
+  const { moduleProgress, token } = useApp();
 
-  const module = modules.find((m) => m.id === moduleId);
-  const progress = moduleProgress.find((m) => m.moduleId === moduleId);
-  const completedLessons = progress?.completedLessons || [];
+  const [module, setModule]     = useState<CommonModule | null>(null);
+  const [lessons, setLessons]   = useState<CommonLesson[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [apiError, setApiError]   = useState<string | null>(null);
+
+  // ── Fetch Data ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!moduleId) return;
+      setIsLoading(true);
+      setApiError(null);
+
+      try {
+        // 1. Fetch Module Info
+        const moduleRes = await fetch(`${API_BASE}/modules/${moduleId}`);
+        if (!moduleRes.ok) throw new Error('Module fetch failed');
+        const moduleData = await moduleRes.json();
+        
+        setModule({
+          id: String(moduleData.module.module_id),
+          title: moduleData.module.title,
+          description: moduleData.module.description,
+          icon: moduleData.module.icon ?? '📚',
+        });
+
+        // 2. Fetch Lessons (Authenticated)
+        const lessonsRes = await fetch(`${API_BASE}/modules/${moduleId}/lessons`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        if (!lessonsRes.ok) throw new Error('Lessons fetch failed');
+        const lessonsData = await lessonsRes.json();
+
+        const normalizedLessons: CommonLesson[] = (lessonsData.lessons as ApiLesson[]).map(l => ({
+          id: String(l.lesson_id),
+          title: l.title,
+          order: l.lesson_order,
+          status: l.status,
+        }));
+
+        setLessons(normalizedLessons);
+      } catch (err: any) {
+        setApiError(err.message || 'Failed to connect to server');
+        console.error(err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [moduleId, token]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
+        <NavBar />
+        <div className="flex flex-col items-center justify-center py-40 gap-4">
+          <Loader2 className="w-10 h-10 text-green-500 animate-spin" />
+          <p className="text-gray-500 font-medium">Loading your path...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!module) {
     return (
@@ -27,18 +122,9 @@ export default function LessonPathPage() {
     );
   }
 
-  const isLessonUnlocked = (lessonIndex: number) => {
-    if (lessonIndex === 0) return true;
-    return completedLessons.includes(module.lessons[lessonIndex - 1].id);
-  };
-
-  const isLessonCompleted = (lessonId: string) => completedLessons.includes(lessonId);
-
-  const overallProgress = module.lessons.length > 0
-    ? Math.round((completedLessons.length / module.lessons.length) * 100)
-    : 0;
-
-  const isModuleComplete = completedLessons.length === module.lessons.length && module.lessons.length > 0;
+  const completedCount = lessons.filter(l => l.status === 'completed').length;
+  const overallProgress = lessons.length > 0 ? Math.round((completedCount / lessons.length) * 100) : 0;
+  const isModuleComplete = completedCount === lessons.length && lessons.length > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
@@ -56,6 +142,13 @@ export default function LessonPathPage() {
           </motion.div>
         </Link>
 
+        {/* Offline notice */}
+        {apiError && (
+          <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 flex items-center gap-2">
+            <span>⚠️</span> {apiError}
+          </div>
+        )}
+
         {/* Module Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -69,7 +162,7 @@ export default function LessonPathPage() {
               <div className="text-5xl">{module.icon}</div>
               <div className="flex items-center gap-2 bg-white/20 rounded-full px-3 py-1 text-sm">
                 <Star className="w-4 h-4 text-yellow-300 fill-yellow-300" />
-                <span>{completedLessons.length}/{module.lessons.length} done</span>
+                <span>{completedCount}/{lessons.length} done</span>
               </div>
             </div>
             <h1 className="text-2xl font-bold mb-1">{module.title}</h1>
@@ -94,10 +187,10 @@ export default function LessonPathPage() {
           <div className="absolute left-6 top-6 bottom-6 w-0.5 bg-gradient-to-b from-green-300 via-gray-200 to-gray-200 z-0" />
 
           <div className="space-y-6">
-            {module.lessons.map((lesson, index) => {
-              const isCompleted = isLessonCompleted(lesson.id);
-              const isUnlocked = isLessonUnlocked(index);
-              const isCurrent = isUnlocked && !isCompleted;
+            {lessons.map((lesson, index) => {
+              const isCompleted = lesson.status === 'completed';
+              const isUnlocked  = lesson.status !== 'locked';
+              const isCurrent   = lesson.status === 'unlocked';
 
               return (
                 <motion.div

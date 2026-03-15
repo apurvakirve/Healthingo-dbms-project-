@@ -1,5 +1,6 @@
+import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
-import { modules } from '../data/modules';
+import { useApp } from '../context/AppContext';
 import { motion } from 'motion/react';
 import { NavBar } from '../components/NavBar';
 import { ArrowLeft, ChevronRight, Lightbulb, BookOpen, Clock, Play } from 'lucide-react';
@@ -16,18 +17,75 @@ const lessonIllustrations: Record<string, string[]> = {
 export default function LessonContentPage() {
   const { moduleId, lessonId } = useParams<{ moduleId: string; lessonId: string }>();
   const navigate = useNavigate();
+  const { token } = useApp();
 
-  const module = modules.find((m) => m.id === moduleId);
-  const lesson = module?.lessons.find((l) => l.id === lessonId);
+  const [lesson, setLesson] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [totalLessons, setTotalLessons] = useState(0);
+  const [moduleInfo, setModuleInfo] = useState<any>(null);
 
-  if (!module || !lesson) {
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+  useEffect(() => {
+    const loadLesson = async () => {
+      if (!moduleId || !lessonId) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`${API_BASE}/modules/${moduleId}/lessons/${lessonId}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || 'Failed to load lesson');
+        }
+
+        const data = await res.json();
+        setLesson(data.lesson);
+
+        // Also fetch siblings for "next lesson" link and lesson count
+        const siblingsRes = await fetch(`${API_BASE}/modules/${moduleId}/lessons`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (siblingsRes.ok) {
+          const siblingsData = await siblingsRes.json();
+          setTotalLessons(siblingsData.lessons.length);
+        }
+
+        // Fetch Module info for title/icon
+        const moduleRes = await fetch(`${API_BASE}/modules/${moduleId}`);
+        if (moduleRes.ok) {
+          const mData = await moduleRes.json();
+          setModuleInfo(mData.module);
+        }
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadLesson();
+  }, [moduleId, lessonId, token]);
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl mb-4">🤷</div>
-          <h2 className="text-2xl font-bold mb-4">Lesson not found</h2>
-          <Link to="/modules" className="text-green-600 hover:text-green-700 font-medium">
-            ← Back to Modules
+      <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
+      </div>
+    );
+  }
+
+  if (error || !lesson) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex items-center justify-center p-8">
+        <div className="text-center bg-white rounded-3xl p-8 shadow-xl max-w-md">
+          <div className="text-5xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold mb-2 text-gray-900">{error || 'Lesson not found'}</h2>
+          <p className="text-gray-500 mb-6">This content might be locked or unavailable.</p>
+          <Link to={`/modules/${moduleId}`} className="bg-green-500 text-white rounded-2xl px-6 py-3 font-semibold hover:bg-green-600 transition-all inline-block">
+            Back to Module
           </Link>
         </div>
       </div>
@@ -35,11 +93,7 @@ export default function LessonContentPage() {
   }
 
   const foodIcons = lessonIllustrations[moduleId || ''] || ['🥗', '🍎', '🥦'];
-  const lessonIndex = module.lessons.findIndex((l) => l.id === lessonId);
-  const nextLesson = module.lessons[lessonIndex + 1];
-
-  // Break content into sentences for animated reveal
-  const sentences = lesson.content.split('. ').map((s) => s.trim()).filter(Boolean);
+  const sentences = lesson.content.split('. ').map((s: string) => s.trim()).filter(Boolean);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
@@ -53,7 +107,7 @@ export default function LessonContentPage() {
             className="inline-flex items-center gap-2 text-green-600 hover:text-green-700 mb-6 font-medium"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to {module.title}
+            Back to {moduleInfo?.title || 'Lessons'}
           </motion.div>
         </Link>
 
@@ -65,7 +119,7 @@ export default function LessonContentPage() {
         >
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs font-semibold text-green-600 bg-green-100 rounded-full px-3 py-1">
-              Lesson {lesson.order} of {module.lessons.length}
+              Lesson {lesson.lesson_order} of {totalLessons}
             </span>
             <span className="text-xs text-gray-400 flex items-center gap-1">
               <Clock className="w-3 h-3" /> ~5 min read
@@ -104,10 +158,10 @@ export default function LessonContentPage() {
               transition={{ duration: 2, repeat: Infinity }}
               className="text-7xl mb-3"
             >
-              {module.icon}
+              {moduleInfo?.icon || '📚'}
             </motion.div>
             <h2 className="text-white text-xl font-bold">{lesson.title}</h2>
-            <p className="text-green-100 text-sm mt-1">{module.title}</p>
+            <p className="text-green-100 text-sm mt-1">{moduleInfo?.title}</p>
           </div>
         </motion.div>
 
@@ -124,7 +178,7 @@ export default function LessonContentPage() {
           </div>
 
           <div className="space-y-3">
-            {sentences.map((sentence, i) => (
+            {sentences.map((sentence: string, i: number) => (
               <motion.p
                 key={i}
                 initial={{ opacity: 0, x: -10 }}
@@ -173,16 +227,16 @@ export default function LessonContentPage() {
 
         {/* Progress Dots */}
         <div className="flex justify-center gap-2 mb-8">
-          {module.lessons.map((l, i) => (
+          {Array.from({ length: totalLessons }).map((_, i) => (
             <motion.div
-              key={l.id}
+              key={i}
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.6 + i * 0.05 }}
               className={`rounded-full transition-all ${
-                i === lessonIndex
+                i + 1 === lesson.lesson_order
                   ? 'w-6 h-2.5 bg-green-500'
-                  : i < lessonIndex
+                  : i + 1 < lesson.lesson_order
                   ? 'w-2.5 h-2.5 bg-green-300'
                   : 'w-2.5 h-2.5 bg-gray-200'
               }`}

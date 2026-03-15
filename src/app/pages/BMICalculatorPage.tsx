@@ -111,14 +111,39 @@ export default function BMICalculatorPage() {
   const [bmi, setBmi] = useState<number | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
 
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
   const calculateBMI = async () => {
-    const h = parseFloat(height) / 100;
+    const h = parseFloat(height);
     const w = parseFloat(weight);
     if (h > 0 && w > 0) {
       setIsCalculating(true);
-      await new Promise((r) => setTimeout(r, 500));
-      setBmi(w / (h * h));
-      setIsCalculating(false);
+      try {
+        const token = localStorage.getItem('healthingo_token');
+        const res = await fetch(`${API_BASE}/health/bmi`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ height: h, weight: w }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setBmi(data.bmi);
+        } else {
+          // Local fallback for calculation if API fails
+          const h_m = h / 100;
+          setBmi(w / (h_m * h_m));
+        }
+      } catch (err) {
+        console.error('BMI API error:', err);
+        const h_m = h / 100;
+        setBmi(w / (h_m * h_m));
+      } finally {
+        setIsCalculating(false);
+      }
     }
   };
 

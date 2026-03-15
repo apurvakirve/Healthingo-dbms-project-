@@ -4,8 +4,7 @@ import { useApp } from '../context/AppContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { ChevronRight, ChevronLeft, Check, User, Activity, Target } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, User, Activity, Target, AlertCircle } from 'lucide-react';
 
 const steps = [
   { id: 1, title: 'Your Identity', icon: User, desc: 'Tell us who you are' },
@@ -25,6 +24,8 @@ export default function RegisterPage() {
   const { register } = useApp();
   const [currentStep, setCurrentStep] = useState(1);
   const [direction, setDirection] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -49,19 +50,28 @@ export default function RegisterPage() {
     if (currentStep > 1) goToStep(currentStep - 1);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    register({
+    setIsLoading(true);
+    setError(null);
+
+    const err = await register({
       name: formData.name,
       email: formData.email,
       password: formData.password,
-      age: parseInt(formData.age),
-      height: parseInt(formData.height),
-      weight: parseInt(formData.weight),
-      gender: formData.gender,
-      healthGoal: formData.healthGoal,
+      age: formData.age ? parseInt(formData.age) : undefined,
+      height: formData.height ? parseInt(formData.height) : undefined,
+      weight: formData.weight ? parseInt(formData.weight) : undefined,
+      gender: formData.gender || undefined,
+      health_goal: formData.healthGoal || undefined,
     });
-    navigate('/dashboard');
+
+    setIsLoading(false);
+    if (err) {
+      setError(err);
+    } else {
+      navigate('/dashboard');
+    }
   };
 
   const isStep1Valid = formData.name && formData.email && formData.password;
@@ -354,15 +364,38 @@ export default function RegisterPage() {
                     type="submit"
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    disabled={!isStep3Valid}
+                    disabled={!isStep3Valid || isLoading}
                     className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-semibold transition-colors"
                   >
-                    🚀 Start My Journey!
+                    {isLoading ? (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+                          className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+                        />
+                        Creating account...
+                      </>
+                    ) : (
+                      '🚀 Start My Journey!'
+                    )}
                   </motion.button>
                 )}
               </div>
             </form>
           </div>
+
+          {/* Error message */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mx-8 mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2"
+            >
+              <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-red-600 font-medium">{error}</p>
+            </motion.div>
+          )}
 
           {/* Progress bar at bottom */}
           <div className="h-1.5 bg-gray-100">

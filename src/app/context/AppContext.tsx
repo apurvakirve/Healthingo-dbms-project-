@@ -1,13 +1,25 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from 'react';
+
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface UserProfile {
+  user_id: number;
   name: string;
   email: string;
-  age: number;
-  height: number;
-  weight: number;
-  gender: string;
-  healthGoal: string;
+  age: number | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  gender: string | null;
+  health_goal: string | null;
+  role: string;
+  is_active: boolean;
+  created_at: string;
 }
 
 export interface ModuleProgress {
@@ -19,93 +31,246 @@ export interface ModuleProgress {
 export interface AppContextType {
   user: UserProfile | null;
   setUser: (user: UserProfile | null) => void;
+  token: string | null;
   isLoggedIn: boolean;
-  login: (email: string, password: string) => void;
+  isAdmin: boolean;
+  /** Calls POST /api/auth/login, stores JWT, updates state. Returns error message on failure. */
+  login: (email: string, password: string) => Promise<string | null>;
   logout: () => void;
-  register: (userData: UserProfile & { password: string }) => void;
+  /** Calls POST /api/auth/register, stores JWT, updates state. Returns error message on failure. */
+  register: (userData: {
+    name: string;
+    email: string;
+    password: string;
+    age?: number;
+    height?: number;
+    weight?: number;
+    gender?: string;
+    health_goal?: string;
+  }) => Promise<string | null>;
   points: number;
-  addPoints: (amount: number) => void;
   streak: number;
+  badges: any[];
   moduleProgress: ModuleProgress[];
   completeLesson: (moduleId: string, lessonId: string) => void;
   habits: { [date: string]: { water: boolean; fruits: boolean; exercise: boolean } };
   updateHabit: (date: string, habit: 'water' | 'fruits' | 'exercise', value: boolean) => void;
+  refreshStats: () => Promise<void>;
+  addPoints: (amount: number) => void;
 }
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const TOKEN_KEY = 'healthingo_token';
+const USER_KEY  = 'healthingo_user';
+
+// ── Context ────────────────────────────────────────────────────────────────────
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [points, setPoints] = useState(250);
-  const [streak, setStreak] = useState(7);
+  // Rehydrate from localStorage on mount
+  const [token, setToken]       = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [user, setUserState]    = useState<UserProfile | null>(() => {
+    try {
+      const stored = localStorage.getItem(USER_KEY);
+      return stored ? (JSON.parse(stored) as UserProfile) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem(TOKEN_KEY));
+
+  const [points, setPoints]           = useState(0);
+  const [streak, setStreak]           = useState(0);
+  const [badges, setBadges]           = useState([]);
   const [moduleProgress, setModuleProgress] = useState<ModuleProgress[]>([
     { moduleId: 'nutrition-basics', completedLessons: ['lesson-1', 'lesson-2'], progress: 40 },
     { moduleId: 'balanced-diet', completedLessons: [], progress: 0 },
   ]);
-  const [habits, setHabits] = useState<{ [date: string]: { water: boolean; fruits: boolean; exercise: boolean } }>({
-    '2026-03-10': { water: true, fruits: true, exercise: true },
-    '2026-03-11': { water: true, fruits: false, exercise: true },
-    '2026-03-12': { water: true, fruits: true, exercise: false },
-    '2026-03-13': { water: false, fruits: false, exercise: false },
-  });
+  const [habits, setHabits] = useState<{
+    [date: string]: { water: boolean; fruits: boolean; exercise: boolean };
+  }>({});
 
-  const login = (email: string, password: string) => {
-    // Mock login - in real app would validate credentials
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  const persistSession = (jwt: string, profile: UserProfile) => {
+    localStorage.setItem(TOKEN_KEY, jwt);
+    localStorage.setItem(USER_KEY, JSON.stringify(profile));
+    setToken(jwt);
+    setUserState(profile);
     setIsLoggedIn(true);
-    if (!user) {
-      setUser({
-        name: 'Demo User',
-        email: email,
-        age: 30,
-        height: 170,
-        weight: 70,
-        gender: 'other',
-        healthGoal: 'healthy-lifestyle',
+  };
+
+  const setUser = (profile: UserProfile | null) => {
+    if (profile) {
+      localStorage.setItem(USER_KEY, JSON.stringify(profile));
+    } else {
+      localStorage.removeItem(USER_KEY);
+    }
+    setUserState(profile);
+  };
+
+  const refreshStats = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/user/stats`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.ok) {
+        const data = await res.json();
+        setPoints(data.stats.points);
+        setStreak(data.stats.streak);
+        setBadges(data.stats.badges);
+      }
+    } catch (err) {
+      console.error('Failed to sync stats:', err);
+    }
+  };
+
+  const fetchHabits = async () => {
+    if (!token || !user) return;
+    try {
+      const res = await fetch(`${API_BASE}/habits/${user.user_id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const habitMap: any = {};
+        data.history.forEach((h: any) => {
+          const date = h.log_date.split('T')[0];
+          habitMap[date] = {
+            water: !!h.water_intake,
+            fruits: !!h.fruits_eaten,
+            exercise: !!h.exercise_done,
+          };
+        });
+        setHabits(habitMap);
+      }
+    } catch (err) {
+      console.error('Failed to fetch habits:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      refreshStats();
+      fetchHabits();
+    }
+  }, [isLoggedIn, token]);
+
+  // ── Auth Actions ──────────────────────────────────────────────────────────────
+
+  const login = async (email: string, password: string): Promise<string | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        return data.message || 'Login failed. Please try again.';
+      }
+
+      persistSession(data.token, data.user as UserProfile);
+      return null; // null = success
+    } catch {
+      return 'Cannot connect to server. Is the backend running?';
     }
   };
 
   const logout = () => {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    setToken(null);
+    setUserState(null);
     setIsLoggedIn(false);
-    setUser(null);
   };
 
-  const register = (userData: UserProfile & { password: string }) => {
-    const { password, ...userProfile } = userData;
-    setUser(userProfile);
-    setIsLoggedIn(true);
+  const register = async (userData: {
+    name: string;
+    email: string;
+    password: string;
+    age?: number;
+    height?: number;
+    weight?: number;
+    gender?: string;
+    health_goal?: string;
+  }): Promise<string | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: userData.name,
+          email: userData.email,
+          password: userData.password,
+          age: userData.age,
+          height: userData.height,
+          weight: userData.weight,
+          gender: userData.gender,
+          health_goal: userData.health_goal,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        return data.message || 'Registration failed. Please try again.';
+      }
+
+      // After registration, automatically log in to get a token
+      return login(userData.email, userData.password);
+    } catch {
+      return 'Cannot connect to server. Is the backend running?';
+    }
   };
 
-  const addPoints = (amount: number) => {
-    setPoints((prev) => prev + amount);
-  };
+  // ── Other Actions ─────────────────────────────────────────────────────────────
+
+  const addPoints = (amount: number) => setPoints((prev) => prev + amount);
 
   const completeLesson = (moduleId: string, lessonId: string) => {
-    setModuleProgress((prev) => {
-      const moduleIndex = prev.findIndex((m) => m.moduleId === moduleId);
-      if (moduleIndex === -1) {
-        return [...prev, { moduleId, completedLessons: [lessonId], progress: 20 }];
-      }
-      
-      const updated = [...prev];
-      const module = updated[moduleIndex];
-      if (!module.completedLessons.includes(lessonId)) {
-        module.completedLessons = [...module.completedLessons, lessonId];
-        module.progress = Math.min(100, module.progress + 20);
-      }
-      return updated;
-    });
+    // Lesson completion is now handled via the Quiz submission API
+    // We just refresh stats here in case it was a content-only lesson (if any)
+    refreshStats();
   };
 
-  const updateHabit = (date: string, habit: 'water' | 'fruits' | 'exercise', value: boolean) => {
-    setHabits((prev) => ({
-      ...prev,
-      [date]: {
-        ...(prev[date] || { water: false, fruits: false, exercise: false }),
-        [habit]: value,
-      },
-    }));
+  const updateHabit = async (
+    date: string,
+    habit: 'water' | 'fruits' | 'exercise',
+    value: boolean
+  ) => {
+    // Optimization: Update UI immediately
+    const currentHabitData = habits[date] || { water: false, fruits: false, exercise: false };
+    const newHabitData = { ...currentHabitData, [habit]: value };
+    
+    setHabits(prev => ({ ...prev, [date]: newHabitData }));
+
+    // Send to backend
+    if (!token) return;
+    try {
+      await fetch(`${API_BASE}/habits`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...newHabitData,
+          water_intake: newHabitData.water,
+          fruits_eaten: newHabitData.fruits,
+          exercise_done: newHabitData.exercise,
+          date
+        }),
+      });
+    } catch (err) {
+      console.error('Failed to sync habit to backend:', err);
+    }
   };
 
   return (
@@ -113,17 +278,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       value={{
         user,
         setUser,
+        token,
         isLoggedIn,
+        isAdmin: user?.role === 'admin',
         login,
         logout,
         register,
         points,
-        addPoints,
+        addPoints: () => {}, // Deprecated, backend handles it
         streak,
+        badges,
         moduleProgress,
         completeLesson,
         habits,
         updateHabit,
+        refreshStats
       }}
     >
       {children}

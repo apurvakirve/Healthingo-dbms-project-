@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { motion } from 'motion/react';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { ArrowRight, Mail, Lock } from 'lucide-react';
+import { ArrowRight, Mail, Lock, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -12,14 +12,23 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    login(email, password);
-    navigate('/dashboard');
+    setError(null);
+
+    const err = await login(email, password);
+
+    setIsLoading(false);
+    if (err) {
+      setError(err);
+    } else {
+      navigate('/dashboard');
+    }
   };
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50 flex items-center justify-center px-4">
@@ -139,17 +148,17 @@ export default function LoginPage() {
             </motion.button>
           </form>
 
-          {/* Demo hint */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="mt-4 p-3 bg-blue-50 rounded-xl text-center"
-          >
-            <p className="text-xs text-blue-600">
-              💡 Demo: Enter any email & password to login
-            </p>
-          </motion.div>
+          {/* Error message */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2"
+            >
+              <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-red-600 font-medium">{error}</p>
+            </motion.div>
+          )}
         </motion.div>
 
         <motion.p

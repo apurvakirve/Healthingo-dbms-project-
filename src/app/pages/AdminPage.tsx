@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate } from 'react-router';
+import { useApp } from '../context/AppContext';
 import { NavBar } from '../components/NavBar';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { modules } from '../data/modules';
-import { BookOpen, FileQuestion, HelpCircle, Plus, CheckCircle, ShieldCheck, ChevronRight } from 'lucide-react';
+import { BookOpen, FileQuestion, HelpCircle, Plus, CheckCircle, ShieldCheck, ChevronRight, ShieldX } from 'lucide-react';
 
 type TabType = 'modules' | 'lessons' | 'quizzes';
 
@@ -31,8 +32,31 @@ function SuccessToast({ message, onDone }: { message: string; onDone: () => void
 }
 
 export default function AdminPage() {
+  const navigate = useNavigate();
+  const { isAdmin, isLoggedIn, token } = useApp();
   const [activeTab, setActiveTab] = useState<TabType>('modules');
   const [toast, setToast] = useState<string | null>(null);
+  const [modulesList, setModulesList] = useState<any[]>([]);
+
+  // Redirect non-admin or unauthenticated users immediately
+  useEffect(() => {
+    if (!isLoggedIn) {
+      navigate('/login');
+      return;
+    }
+    if (!isAdmin) {
+      navigate('/dashboard');
+      return;
+    }
+    // Load modules list for sidebar
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    fetch(`${API_BASE}/modules`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => setModulesList(data.modules || []))
+      .catch(() => {});
+  }, [isAdmin, isLoggedIn, navigate, token]);
 
   const [moduleForm, setModuleForm] = useState({ title: '', description: '', icon: '' });
   const [lessonForm, setLessonForm] = useState({ moduleId: '', title: '', content: '' });
@@ -101,13 +125,13 @@ export default function AdminPage() {
           >
             <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
               <div className="text-2xl mb-1">📚</div>
-              <div className="text-2xl font-bold text-gray-900">{modules.length}</div>
+              <div className="text-2xl font-bold text-gray-900">{modulesList.length}</div>
               <div className="text-sm text-gray-500">Modules</div>
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
               <div className="text-2xl mb-1">📖</div>
               <div className="text-2xl font-bold text-gray-900">
-                {modules.reduce((s, m) => s + m.lessons.length, 0)}
+                {modulesList.reduce((s: number, m: any) => s + (m.lesson_count || 0), 0)}
               </div>
               <div className="text-sm text-gray-500">Total Lessons</div>
             </div>
@@ -121,9 +145,9 @@ export default function AdminPage() {
             <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
               <div className="text-xs font-semibold text-gray-400 uppercase mb-3">Modules</div>
               <div className="space-y-2">
-                {modules.map((m) => (
-                  <div key={m.id} className="flex items-center gap-2 text-sm text-gray-600">
-                    <span>{m.icon}</span>
+                {modulesList.map((m: any) => (
+                  <div key={m.module_id} className="flex items-center gap-2 text-sm text-gray-600">
+                    <span>{m.icon || '📚'}</span>
                     <span className="truncate">{m.title}</span>
                     <ChevronRight className="w-3 h-3 text-gray-400 ml-auto flex-shrink-0" />
                   </div>
@@ -254,9 +278,9 @@ export default function AdminPage() {
                         className="mt-1.5 w-full rounded-xl h-11 border border-gray-200 px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
                       >
                         <option value="">Select a module...</option>
-                        {modules.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.icon} {m.title}
+                        {modulesList.map((m: any) => (
+                          <option key={m.module_id} value={m.module_id}>
+                            {m.icon || '📚'} {m.title}
                           </option>
                         ))}
                       </select>
