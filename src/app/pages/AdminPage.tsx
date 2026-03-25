@@ -8,12 +8,13 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { BookOpen, FileQuestion, HelpCircle, Plus, CheckCircle, ShieldCheck, ChevronRight, ShieldX } from 'lucide-react';
 
-type TabType = 'modules' | 'lessons' | 'quizzes';
+type TabType = 'modules' | 'lessons' | 'quizzes' | 'users';
 
 const tabs: { id: TabType; label: string; icon: React.ElementType; emoji: string }[] = [
   { id: 'modules', label: 'Modules', icon: BookOpen, emoji: '📚' },
   { id: 'lessons', label: 'Lessons', icon: FileQuestion, emoji: '📖' },
   { id: 'quizzes', label: 'Quizzes', icon: HelpCircle, emoji: '❓' },
+  { id: 'users', label: 'Users', icon: ShieldCheck, emoji: '👥' },
 ];
 
 function SuccessToast({ message, onDone }: { message: string; onDone: () => void }) {
@@ -37,6 +38,27 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabType>('modules');
   const [toast, setToast] = useState<string | null>(null);
   const [modulesList, setModulesList] = useState<any[]>([]);
+  const [usersList, setUsersList] = useState<any[]>([]);
+
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+  const loadData = () => {
+    // Load modules list for sidebar
+    fetch(`${API_BASE}/modules`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => setModulesList(data.modules || []))
+      .catch(() => {});
+
+    // Load users list
+    fetch(`${API_BASE}/admin/users`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => setUsersList(data.users || []))
+      .catch(() => {});
+  };
 
   // Redirect non-admin or unauthenticated users immediately
   useEffect(() => {
@@ -48,14 +70,7 @@ export default function AdminPage() {
       navigate('/dashboard');
       return;
     }
-    // Load modules list for sidebar
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-    fetch(`${API_BASE}/modules`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((data) => setModulesList(data.modules || []))
-      .catch(() => {});
+    loadData();
   }, [isAdmin, isLoggedIn, navigate, token]);
 
   const [moduleForm, setModuleForm] = useState({ title: '', description: '', icon: '' });
@@ -71,22 +86,58 @@ export default function AdminPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleModuleSubmit = (e: React.FormEvent) => {
+  const handleModuleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    showToast('Module created! (Demo mode)');
-    setModuleForm({ title: '', description: '', icon: '' });
+    try {
+      const resp = await fetch(`${API_BASE}/admin/modules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(moduleForm),
+      });
+      if (resp.ok) {
+        showToast('Module created successfully!');
+        setModuleForm({ title: '', description: '', icon: '' });
+        loadData();
+      }
+    } catch (err) {
+      showToast('Error creating module');
+    }
   };
 
-  const handleLessonSubmit = (e: React.FormEvent) => {
+  const handleLessonSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    showToast('Lesson created! (Demo mode)');
-    setLessonForm({ moduleId: '', title: '', content: '' });
+    try {
+      const resp = await fetch(`${API_BASE}/admin/lessons`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(lessonForm),
+      });
+      if (resp.ok) {
+        showToast('Lesson created successfully!');
+        setLessonForm({ moduleId: '', title: '', content: '' });
+        loadData();
+      }
+    } catch (err) {
+      showToast('Error creating lesson');
+    }
   };
 
-  const handleQuizSubmit = (e: React.FormEvent) => {
+  const handleQuizSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    showToast('Quiz question added! (Demo mode)');
-    setQuizForm({ lessonId: '', question: '', option1: '', option2: '', option3: '', option4: '', correctAnswer: '1' });
+    try {
+      const resp = await fetch(`${API_BASE}/admin/quizzes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(quizForm),
+      });
+      if (resp.ok) {
+        showToast('Quiz question added successfully!');
+        setQuizForm({ lessonId: '', question: '', option1: '', option2: '', option3: '', option4: '', correctAnswer: '1' });
+        loadData();
+      }
+    } catch (err) {
+      showToast('Error adding quiz question');
+    }
   };
 
   return (
@@ -136,9 +187,9 @@ export default function AdminPage() {
               <div className="text-sm text-gray-500">Total Lessons</div>
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
-              <div className="text-2xl mb-1">❓</div>
-              <div className="text-2xl font-bold text-gray-900">5</div>
-              <div className="text-sm text-gray-500">Quiz Questions</div>
+              <div className="text-2xl mb-1">👥</div>
+              <div className="text-2xl font-bold text-gray-900">{usersList.length}</div>
+              <div className="text-sm text-gray-500">Registered Users</div>
             </div>
 
             {/* Module List */}
@@ -413,20 +464,67 @@ export default function AdminPage() {
                   </form>
                 </motion.div>
               )}
+              {activeTab === 'users' && (
+                <motion.div
+                  key="users"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="bg-white rounded-3xl shadow-lg p-6 overflow-hidden"
+                >
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="w-8 h-8 bg-purple-100 rounded-xl flex items-center justify-center">
+                      <ShieldCheck className="w-4 h-4 text-purple-600" />
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900">User Management</h2>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-gray-50 text-gray-500 font-semibold uppercase text-[10px] tracking-wider">
+                        <tr>
+                          <th className="px-4 py-3">User</th>
+                          <th className="px-4 py-3">Role</th>
+                          <th className="px-4 py-3 text-center">BMI</th>
+                          <th className="px-4 py-3 text-right">Points</th>
+                          <th className="px-4 py-3 text-right">Joined</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {usersList.map((usr) => (
+                          <tr key={usr.user_id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="font-semibold text-gray-900">{usr.name}</div>
+                              <div className="text-xs text-gray-400">{usr.email}</div>
+                            </td>
+                            <td className="px-4 py-3 text-xs uppercase font-bold text-gray-500">{usr.role}</td>
+                            <td className="px-4 py-3 text-center text-xs font-medium text-gray-600">{usr.latest_bmi || '—'}</td>
+                            <td className="px-4 py-3 text-right font-mono font-bold text-green-600">{usr.points}</td>
+                            <td className="px-4 py-3 text-right text-xs text-gray-400">
+                              {new Date(usr.created_at).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </motion.div>
+              )}
             </AnimatePresence>
 
-            {/* Demo Note */}
+            {/* Portal Note */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4 }}
-              className="mt-4 bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-start gap-3"
+              className="mt-4 bg-green-50 border border-green-200 rounded-2xl p-4 flex items-start gap-3"
             >
-              <div className="text-xl flex-shrink-0">ℹ️</div>
+              <div className="text-xl flex-shrink-0">🚀</div>
               <div>
-                <div className="font-semibold text-blue-800 text-sm">Demo Mode</div>
-                <p className="text-xs text-blue-600 mt-0.5">
-                  This is a prototype. In production, forms would persist data to a backend database.
+                <div className="font-semibold text-green-800 text-sm">Live Admin Portal</div>
+                <p className="text-xs text-green-600 mt-0.5">
+                  Content added here will be immediately available to students in the Modules and Lessons sections.
                 </p>
               </div>
             </motion.div>

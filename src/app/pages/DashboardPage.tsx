@@ -28,12 +28,16 @@ function AnimatedNumber({ value, duration = 1000 }: { value: number; duration?: 
 }
 
 const badgesData = [
-  { emoji: '🏆', label: 'First Lesson', earned: true, color: 'bg-yellow-100' },
-  { emoji: '🔥', label: '7 Day Streak', earned: true, color: 'bg-orange-100' },
-  { emoji: '⭐', label: 'Quiz Master', earned: true, color: 'bg-green-100' },
-  { emoji: '🎯', label: 'Module Complete', earned: false, color: 'bg-gray-100' },
-  { emoji: '💪', label: '30 Day Streak', earned: false, color: 'bg-gray-100' },
-  { emoji: '👑', label: 'Expert', earned: false, color: 'bg-gray-100' },
+  { emoji: '🏆', label: 'First Lesson',      color: 'bg-yellow-100' },
+  { emoji: '🔥', label: '7 Day Streak',      color: 'bg-orange-100' },
+  { emoji: '⭐', label: 'Quiz Master',       color: 'bg-green-100' },
+  { emoji: '🎯', label: 'Module Complete',   color: 'bg-blue-100' },
+  { emoji: '💪', label: '30 Day Streak',     color: 'bg-pink-100' },
+  { emoji: '👑', label: 'Expert',            color: 'bg-purple-100' },
+  { emoji: '💯', label: 'Perfect Score',     color: 'bg-red-100' },
+  { emoji: '🚀', label: 'Quick Learner',     color: 'bg-cyan-100' },
+  { emoji: '🐢', label: 'Persistent Learner', color: 'bg-amber-100' },
+  { emoji: '⚡', label: 'Fast Learner',       color: 'bg-emerald-100' },
 ];
 
 export default function DashboardPage() {

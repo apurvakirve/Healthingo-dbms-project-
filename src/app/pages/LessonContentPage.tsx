@@ -165,6 +165,23 @@ export default function LessonContentPage() {
           </div>
         </motion.div>
 
+        {/* Video Content (if available) */}
+        {lesson.video_url && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 overflow-hidden rounded-3xl shadow-xl aspect-video bg-black"
+          >
+            <iframe
+              src={lesson.video_url.replace('watch?v=', 'embed/')}
+              title={lesson.title}
+              className="w-full h-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            ></iframe>
+          </motion.div>
+        )}
+
         {/* Content */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

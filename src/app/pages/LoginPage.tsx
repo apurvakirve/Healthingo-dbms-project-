@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { motion } from 'motion/react';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { ArrowRight, Mail, Lock, AlertCircle } from 'lucide-react';
+import { ArrowRight, Mail, Lock, AlertCircle, ShieldCheck } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();

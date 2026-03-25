@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useApp } from '../context/AppContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, Calculator, CheckSquare, LogOut, LayoutDashboard, ShieldCheck, Flame, Star } from 'lucide-react';
@@ -9,13 +9,18 @@ const navItems = [
   { to: '/modules', icon: BookOpen, label: 'Modules' },
   { to: '/bmi-calculator', icon: Calculator, label: 'BMI' },
   { to: '/habits', icon: CheckSquare, label: 'Habits' },
-  { to: '/admin', icon: ShieldCheck, label: 'Admin' },
 ];
 
 export function NavBar() {
   const { user, points, streak, logout } = useApp();
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   return (
     <nav className="bg-white shadow-sm border-b sticky top-0 z-50">
@@ -55,6 +60,23 @@ export function NavBar() {
               </Link>
             );
           })}
+          
+          {user?.role === 'admin' && (
+            <Link to="/admin">
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm transition-all ${
+                  location.pathname.startsWith('/admin')
+                    ? 'bg-purple-100 text-purple-700 font-semibold'
+                    : 'text-purple-600 hover:bg-purple-50 font-medium'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Admin
+              </motion.div>
+            </Link>
+          )}
         </div>
 
         {/* Right: stats + logout */}
@@ -77,7 +99,7 @@ export function NavBar() {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={logout}
+            onClick={handleLogout}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
           >
             <LogOut className="w-4 h-4" />
@@ -123,6 +145,21 @@ export function NavBar() {
                   </Link>
                 );
               })}
+
+              {user?.role === 'admin' && (
+                <Link to="/admin" onClick={() => setMobileOpen(false)}>
+                  <div
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm ${
+                      location.pathname.startsWith('/admin') 
+                        ? 'bg-purple-100 text-purple-700 font-semibold' 
+                        : 'text-purple-600 bg-purple-50 font-medium'
+                    }`}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    Admin Portal
+                  </div>
+                </Link>
+              )}
               <div className="flex items-center gap-3 px-3 py-2">
                 <div className="flex items-center gap-1.5 bg-yellow-50 rounded-full px-3 py-1">
                   <Star className="w-4 h-4 text-yellow-500 fill-yellow-400" />
@@ -134,7 +171,7 @@ export function NavBar() {
                 </div>
               </div>
               <button
-                onClick={() => { logout(); setMobileOpen(false); }}
+                onClick={() => { handleLogout(); setMobileOpen(false); }}
                 className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-red-600 w-full hover:bg-red-50"
               >
                 <LogOut className="w-4 h-4" />
