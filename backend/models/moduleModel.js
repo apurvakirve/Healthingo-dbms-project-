@@ -42,6 +42,17 @@ const Module = {
     );
     return rows[0] || null;
   },
+  /**
+   * Create a new module.
+   */
+  async create({ title, description, icon, module_order }) {
+    const [result] = await pool.query(
+      `INSERT INTO Modules (title, description, icon, module_order, is_published)
+       VALUES (?, ?, ?, ?, TRUE)`,
+      [title, description, icon, module_order]
+    );
+    return result.insertId;
+  },
 };
 
 export default Module;

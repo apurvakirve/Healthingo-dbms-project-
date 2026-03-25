@@ -16,6 +16,7 @@ import quizRoutes    from './routes/quizRoutes.js';
 import healthRoutes  from './routes/healthRoutes.js';
 import habitRoutes   from './routes/habitRoutes.js';
 import userRoutes    from './routes/userRoutes.js';
+import adminRoutes    from './routes/adminRoutes.js';
 
 // Import global error handler
 import errorHandler from './middleware/errorHandler.js';
@@ -62,7 +63,8 @@ app.use('/api/health', healthRoutes);
 app.use('/api/habits', habitRoutes);
 
 // User Stats: GET /api/user/stats
-app.use('/api/user', userRoutes);
+// Admin: GET /api/admin/users
+app.use('/api/admin', adminRoutes);
 
 // 404 fallback for unknown routes
 app.use((req, res) => {

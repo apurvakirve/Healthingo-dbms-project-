@@ -1,6 +1,7 @@
 // Habit Controller — handles logging and history
 
 import Habit from '../models/habitModel.js';
+import Gamification from '../models/gamificationModel.js';
 
 export const logHabits = async (req, res, next) => {
   try {
@@ -18,6 +19,9 @@ export const logHabits = async (req, res, next) => {
     if (!success) {
       return res.status(500).json({ message: 'Failed to log habits.' });
     }
+
+    // Trigger badge checks for streak/habit milestones
+    await Gamification.checkAndAwardBadges(userId);
 
     return res.status(200).json({ message: 'Habits logged successfully.' });
   } catch (err) {

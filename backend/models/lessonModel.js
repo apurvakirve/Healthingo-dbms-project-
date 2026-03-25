@@ -5,11 +5,6 @@ import pool from '../config/db.js';
 const Lesson = {
   /**
    * Fetch all lessons in a module with the user's progress status.
-   * Sequential Unlocking Rule:
-   * 1. If a User_Progress record exists, use that status.
-   * 2. If it's the first lesson (lesson_order = 1), it's 'unlocked'.
-   * 3. If the previous lesson (lesson_order - 1) is 'completed' by the user, this one is 'unlocked'.
-   * 4. Otherwise, it's 'locked'.
    */
   async findByModuleWithProgress(moduleId, userId) {
     const [rows] = await pool.query(
@@ -84,6 +79,18 @@ const Lesson = {
       [lessonId]
     );
     return rows[0] || null;
+  },
+
+  /**
+   * Create a new lesson.
+   */
+  async create({ module_id, title, content, duration_mins, lesson_order }) {
+    const [result] = await pool.query(
+      `INSERT INTO Lessons (module_id, title, content, duration_mins, lesson_order, is_published)
+       VALUES (?, ?, ?, ?, ?, TRUE)`,
+      [module_id, title, content, duration_mins || 5, lesson_order]
+    );
+    return result.insertId;
   }
 };
 

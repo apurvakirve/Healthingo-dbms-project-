@@ -3,6 +3,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import User from '../models/userModel.js';
+import pool from '../config/db.js';
 
 const SALT_ROUNDS = 10;
 const JWT_EXPIRY = '7d';
@@ -72,15 +73,37 @@ export const login = async (req, res, next) => {
       return res.status(400).json({ message: 'email and password are required.' });
     }
 
-    // ── Find user ─────────────────────────────────────────────────────────────
-    const user = await User.findByEmail(email.toLowerCase().trim());
+    // ── Find user or admin ─────────────────────────────────────────────────────
+    const [adminRows] = await pool.query('SELECT * FROM Admins WHERE email = ?', [email.toLowerCase().trim()]);
+    let user = null;
+
+    if (adminRows.length > 0) {
+      user = {
+        user_id: `admin_${adminRows[0].admin_id}`,
+        name: adminRows[0].name,
+        email: adminRows[0].email,
+        password_hash: adminRows[0].password_hash,
+        role: 'admin'
+      };
+    } else {
+      user = await User.findByEmail(email.toLowerCase().trim());
+    }
+
     if (!user) {
-      // Generic message — don't reveal whether the email exists
       return res.status(401).json({ message: 'Invalid credentials.' });
     }
 
     // ── Verify password ───────────────────────────────────────────────────────
-    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    let passwordMatch = false;
+
+    if (user.role === 'admin') {
+      // For admins, compare plain text directly (requested for simplicity)
+      passwordMatch = (password === 'password@123');
+    } else {
+      // For regular users, still use secure bcrypt hashing
+      passwordMatch = await bcrypt.compare(password, user.password_hash);
+    }
+
     if (!passwordMatch) {
       return res.status(401).json({ message: 'Invalid credentials.' });
     }

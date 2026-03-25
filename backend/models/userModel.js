@@ -26,16 +26,6 @@ const User = {
 
   /**
    * Insert a new user with all registration fields.
-   * @param {object} fields
-   * @param {string} fields.name
-   * @param {string} fields.email
-   * @param {string} fields.hashedPassword
-   * @param {number} fields.age
-   * @param {number} fields.height_cm
-   * @param {number} fields.weight_kg
-   * @param {string} fields.gender
-   * @param {string} fields.health_goal
-   * @returns {number} insertId
    */
   async create({ name, email, hashedPassword, age, height_cm, weight_kg, gender, health_goal }) {
     const [result] = await pool.query(
@@ -46,7 +36,17 @@ const User = {
     );
     return result.insertId;
   },
+
+  /**
+   * Find all users (excluding password hashes).
+   */
+  async findAll() {
+    const [rows] = await pool.query(
+      `SELECT user_id, name, email, role, latest_bmi, points, created_at 
+       FROM Users ORDER BY created_at DESC`
+    );
+    return rows;
+  },
 };
 
 export default User;
-
